@@ -234,15 +234,6 @@ static unique_ptr<BaseSecret> CreateAWSSecretFromCredentialChain(ClientContext &
 		}
 	}
 
-	// Determine whether region is required based on provider chain and validation
-	bool region_required = require_credentials;
-	if (!chain.empty()) {
-		// Only enforce region for chains that need it to fetch credentials
-		if (chain == "instance" || chain == "process" || chain == "env" || chain == "sso") {
-			region_required = false; // region can be inferred
-		}
-	}
-
 	// Region MUST be set according to the SDK https://docs.aws.amazon.com/sdkref/latest/guide/feature-region.html
 	string region;
 	// Get region from secret options
@@ -267,12 +258,11 @@ static unique_ptr<BaseSecret> CreateAWSSecretFromCredentialChain(ClientContext &
 		region = aws_profile.GetRegion();
 	}
 
-	if (region.empty() && region_required) {
-		throw InvalidConfigurationException(
-		    "No AWS region found. Please specify a region explicitly in your secret using REGION 'us-east-1', "
-		    "or set the AWS_REGION environment variable, "
-		    "or add 'region' to your AWS config file profile '%s'.",
-		    profile.empty() ? "default" : profile);
+	if (region.empty()) {
+		DUCKDB_LOG_WARNING(
+		    context,
+		    "Set region explicitly using REGION 'us-east-1' in your CREATE SECRET statement, adding a region to your "
+		    "profile in ~/.aws/config or configure the AWS_REGION or AWS_DEFAULT_REGION environment variables.")
 	}
 
 	if (!chain.empty()) {
@@ -302,6 +292,10 @@ static unique_ptr<BaseSecret> CreateAWSSecretFromCredentialChain(ClientContext &
 	if (credentials.IsEmpty() && require_credentials) {
 		throw InvalidConfigurationException(ConstructErrorMessage(chain, profile, assume_role, external_id));
 	}
+
+	//! If the profile is set we specify a specific profile
+	// auto s3_config = Aws::Client::ClientConfiguration(profile.c_str());
+	// auto region1 = s3_config.region;
 
 	// TODO: We would also like to get the endpoint here, but it's currently not supported byq the AWS SDK:
 	// 		 https://github.com/aws/aws-sdk-cpp/issues/2587
